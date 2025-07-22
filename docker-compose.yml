@@ -16,6 +16,8 @@ services:
     container_name: financehub-app
     networks:
       - financehub-network
+    profiles:
+      - production
 
   # Development service (optional)
   financehub-dev:

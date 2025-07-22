@@ -48,11 +48,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       // TODO: Replace with API call to backend authentication endpoint
       // For now, using mock authentication
-      if (email === 'demo@financehub.com' && password === 'demo123') {
+      const validDemoAccounts = [
+        'john.doe@example.com',
+        'sarah.wilson@company.com', 
+        'alex.chen@startup.io'
+      ];
+      
+      if (validDemoAccounts.includes(email) && password === 'demo123') {
+        const userNames = {
+          'john.doe@example.com': 'John Doe',
+          'sarah.wilson@company.com': 'Sarah Wilson',
+          'alex.chen@startup.io': 'Alex Chen'
+        };
+        
         const mockUser = {
           id: '1',
           email: email,
-          name: 'Demo User',
+          name: userNames[email as keyof typeof userNames],
           avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${email}`
         };
         

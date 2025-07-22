@@ -1,0 +1,20 @@
+# Override file for local development
+# This file is automatically loaded by docker-compose
+version: '3.8'
+
+services:
+  financehub-dev:
+    environment:
+      - VITE_APP_ENV=development
+      - CHOKIDAR_USEPOLLING=true
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/dist
+
+  # Override for using external PostgreSQL
+  postgres:
+    # Uncomment to disable the containerized PostgreSQL
+    # and use your external database at 192.168.0.103
+    profiles:
+      - disabled

@@ -14,8 +14,6 @@ services:
       - VITE_DB_PASSWORD=${DB_PASSWORD}
     restart: unless-stopped
     container_name: financehub-app
-    depends_on:
-      - postgres
     networks:
       - financehub-network
 
@@ -39,8 +37,6 @@ services:
       - VITE_API_URL=${API_URL:-http://localhost:3001}
     restart: unless-stopped
     container_name: financehub-dev
-    depends_on:
-      - postgres
     networks:
       - financehub-network
     profiles:

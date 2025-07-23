@@ -13,7 +13,6 @@ env:
   VERSION: v1.0.${{ github.run_number }}
   CHART_DIR: ./helm
   HELM_NS: financehub
-  GH_TOKEN: ${{ secrets.GH_TOKEN }}
 
 jobs:
   build-push:
@@ -59,7 +58,7 @@ EOF
         run: |
           git config --global user.name "github-actions"
           git config --global user.email "github@actions"
-          git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}
+          git remote set-url origin https://x-access-token:${{ secrets.GH_TOKEN }}@github.com/${{ github.repository }}
 
       - name: Commit Helm Update
         run: |

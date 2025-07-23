@@ -13,6 +13,7 @@ env:
   VERSION: v1.0.${{ github.run_number }}
   CHART_DIR: ./helm
   HELM_NS: financehub
+  GH_TOKEN: ${{ secrets.GH_TOKEN }}
 
 jobs:
   build-push:
@@ -48,21 +49,21 @@ jobs:
         run: |
           mkdir -p "$CHART_DIR/templates"
           cat <<EOF > "$CHART_DIR/templates/namespace.yaml"
-          apiVersion: v1
-          kind: Namespace
-          metadata:
-            name: $HELM_NS
-          EOF
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: $HELM_NS
+EOF
 
       - name: Configure Git for Push
         run: |
           git config --global user.name "github-actions"
           git config --global user.email "github@actions"
-          git remote set-url origin https://${{ secrets.GH_TOKEN }}@github.com/${{ github.repository }}
+          git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}
 
       - name: Commit Helm Update
         run: |
-          git add $CHART_DIR/values.yaml $CHART_DIR/templates/namespace.yaml
+          git add "$CHART_DIR/values.yaml" "$CHART_DIR/templates/namespace.yaml"
           git commit -m "chore: update Helm image tag to $VERSION" || echo "No changes to commit"
           git push origin HEAD:feature/dev
 

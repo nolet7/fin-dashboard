@@ -7,9 +7,9 @@ spec:
   project: default
 
   source:
-    repoURL: https://github.com/nolet7/fin-dashboard.git  # Ì¥Å Change this if needed
-    targetRevision: feature/dev                           # Ì¥Å Use correct branch
-    path: helm                                             # Path to Helm chart
+    repoURL: https://github.com/nolet7/fin-dashboard.git
+    targetRevision: feature/dev
+    path: helm
 
     helm:
       releaseName: financehub
@@ -24,6 +24,4 @@ spec:
     automated:
       prune: true
       selfHeal: true
-    syncOptions:
-      - CreateNamespace=true
 

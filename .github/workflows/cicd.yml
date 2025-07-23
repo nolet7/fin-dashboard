@@ -1,4 +1,4 @@
-name: CI/CD - Docker Build, Helm Push, ArgoCD GitOps
+name: CI/CD - Docker Build, Helm Deploy, ArgoCD Sync
 
 on:
   push:
@@ -31,8 +31,8 @@ jobs:
           docker build -t $REGISTRY/$IMAGE_NAME:$VERSION .
           docker push $REGISTRY/$IMAGE_NAME:$VERSION
 
-  helm-update:
-    name: Update Helm Values and Commit
+  helm-deploy:
+    name: Update Helm Values, Deploy, and Push Changes
     runs-on: self-hosted
     needs: build-push
 
@@ -44,15 +44,12 @@ jobs:
         run: |
           sed -i "s/tag: .*/tag: $VERSION/" "$CHART_DIR/values.yaml"
 
-      - name: Ensure namespace manifest exists
+      - name: Helm Deploy to Cluster
         run: |
-          mkdir -p "$CHART_DIR/templates"
-          cat <<EOF > "$CHART_DIR/templates/namespace.yaml"
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: $HELM_NS
-EOF
+          helm upgrade --install financehub $CHART_DIR \
+            --namespace $HELM_NS \
+            --create-namespace \
+            --wait
 
       - name: Configure Git for Push
         run: |
@@ -62,7 +59,7 @@ EOF
 
       - name: Commit Helm Update
         run: |
-          git add "$CHART_DIR/values.yaml" "$CHART_DIR/templates/namespace.yaml"
+          git add "$CHART_DIR/values.yaml"
           git commit -m "chore: update Helm image tag to $VERSION" || echo "No changes to commit"
           git push origin HEAD:feature/dev
 

@@ -1,0 +1,8 @@
+FinanceHub has been deployed.
+
+To access the application:
+  1. Run: kubectl port-forward svc/{{ include "financehub.fullname" . }} 8080:{{ .Values.service.port }} -n {{ .Values.namespaceOverride }}
+  2. Visit: http://localhost:8080
+
+If Ingress is enabled, access using the configured host.
+

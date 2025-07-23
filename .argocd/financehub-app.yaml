@@ -1,0 +1,29 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: financehub
+  namespace: argocd
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/nolet7/fin-dashboard.git  # Ì¥Å Change this if needed
+    targetRevision: feature/dev                           # Ì¥Å Use correct branch
+    path: helm                                             # Path to Helm chart
+
+    helm:
+      releaseName: financehub
+      valueFiles:
+        - values.yaml
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: financehub
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+

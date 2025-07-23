@@ -1,0 +1,60 @@
+name: CI/CD - Docker Build, Helm Push, ArgoCD GitOps
+
+on:
+  push:
+    branches:
+      - feature/dev
+    paths:
+      - '**'
+
+env:
+  REGISTRY: docker.io
+  IMAGE_NAME: noletengine/financehub
+  VERSION: v1.0.${{ github.run_number }}
+  CHART_DIR: ./helm
+  HELM_NS: financehub
+
+jobs:
+  build-push:
+    name: Build & Push Docker Image
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Login to DockerHub
+        run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u ${{ secrets.DOCKER_USERNAME }} --password-stdin
+
+      - name: Build & Push Image
+        run: |
+          docker build -t $REGISTRY/$IMAGE_NAME:$VERSION .
+          docker push $REGISTRY/$IMAGE_NAME:$VERSION
+
+  helm-update:
+    name: Update Helm Values and Commit
+    runs-on: self-hosted
+    needs: build-push
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Update Helm image tag
+        run: |
+          sed -i "s/tag: .*/tag: $VERSION/" $CHART_DIR/values.yaml
+
+      - name: Ensure namespace manifest exists
+        run: |
+          mkdir -p $CHART_DIR/templates
+          cat <<EOF > $CHART_DIR/templates/namespace.yaml
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: $HELM_NS
+          EOF
+
+      - name: Commit Helm Update
+        run: |
+          git config user.name github-actions
+          git config user.email github@actions
+          git add $CHART_DIR/values.yaml $CHART_DIR/templates/namespace.yaml
+          git commit -m "chore: update Helm image tag to $VERSION"
+          git push
+

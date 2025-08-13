@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Send, ArrowUpDown, Eye, EyeOff, TrendingUp, TrendingDown, CreditCard } from 'lucide-react';
+import { Plus, Send, ArrowUpDown, Eye, EyeOff, TrendingUp, TrendingDown, CreditCard, X } from 'lucide-react';
 
 const currencies = [
   { code: 'USD', symbol: '$', balance: 12847.32, change: +2.34, flag: '🇺🇸', color: 'bg-blue-500' },
@@ -14,8 +14,44 @@ const currencies = [
 export const WalletSection: React.FC = () => {
   const [showBalances, setShowBalances] = useState(true);
   const [selectedCurrency, setSelectedCurrency] = useState('USD');
+  const [showAddCurrency, setShowAddCurrency] = useState(false);
+  const [newCurrencyCode, setNewCurrencyCode] = useState('');
+  const [initialBalance, setInitialBalance] = useState('');
 
   const totalValue = currencies.reduce((sum, curr) => sum + curr.balance, 0);
+
+  const availableCurrencies = [
+    { code: 'CHF', name: 'Swiss Franc', symbol: 'CHF', flag: '🇨🇭' },
+    { code: 'CNY', name: 'Chinese Yuan', symbol: '¥', flag: '🇨🇳' },
+    { code: 'SEK', name: 'Swedish Krona', symbol: 'kr', flag: '🇸🇪' },
+    { code: 'NOK', name: 'Norwegian Krone', symbol: 'kr', flag: '🇳🇴' },
+    { code: 'DKK', name: 'Danish Krone', symbol: 'kr', flag: '🇩🇰' },
+    { code: 'SGD', name: 'Singapore Dollar', symbol: 'S$', flag: '🇸🇬' },
+    { code: 'HKD', name: 'Hong Kong Dollar', symbol: 'HK$', flag: '🇭🇰' },
+    { code: 'NZD', name: 'New Zealand Dollar', symbol: 'NZ$', flag: '🇳🇿' },
+  ].filter(curr => !currencies.some(existing => existing.code === curr.code));
+
+  const handleAddCurrency = () => {
+    if (newCurrencyCode && initialBalance) {
+      const selectedCurr = availableCurrencies.find(c => c.code === newCurrencyCode);
+      if (selectedCurr) {
+        // In a real app, this would make an API call to add the currency
+        console.log('Adding currency:', {
+          code: newCurrencyCode,
+          balance: parseFloat(initialBalance),
+          currency: selectedCurr
+        });
+        
+        // Reset form and close modal
+        setNewCurrencyCode('');
+        setInitialBalance('');
+        setShowAddCurrency(false);
+        
+        // Show success message (you could add a toast notification here)
+        alert(`${selectedCurr.name} wallet added successfully!`);
+      }
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -46,6 +82,7 @@ export const WalletSection: React.FC = () => {
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
+            onClick={() => setShowAddCurrency(true)}
             className="flex items-center space-x-2 bg-lime-accent text-light-base dark:text-dark-base px-4 py-3 rounded-xl font-medium hover:shadow-glow transition-all"
           >
             <Plus className="w-5 h-5" />
@@ -148,6 +185,123 @@ export const WalletSection: React.FC = () => {
           </motion.div>
         ))}
       </div>
+
+      {/* Add Currency Modal */}
+      {showAddCurrency && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50"
+          onClick={() => setShowAddCurrency(false)}
+        >
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-light-surface dark:bg-dark-surface border border-light-border dark:border-dark-border rounded-2xl p-8 max-w-md w-full mx-4 shadow-glass"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-bold text-light-text dark:text-dark-text font-editorial">Add New Currency</h3>
+              <button
+                onClick={() => setShowAddCurrency(false)}
+                className="p-2 hover:bg-light-glass dark:hover:bg-dark-glass rounded-full transition-colors"
+              >
+                <X className="w-5 h-5 text-light-text-secondary dark:text-dark-text-secondary" />
+              </button>
+            </div>
+
+            {/* Currency Selection */}
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-light-text dark:text-dark-text mb-2">
+                  Select Currency
+                </label>
+                <select
+                  value={newCurrencyCode}
+                  onChange={(e) => setNewCurrencyCode(e.target.value)}
+                  className="w-full px-4 py-3 bg-light-glass dark:bg-dark-glass border border-light-border dark:border-dark-border rounded-xl text-light-text dark:text-dark-text focus:outline-none focus:border-lime-accent/50 transition-colors"
+                >
+                  <option value="">Choose a currency...</option>
+                  {availableCurrencies.map((currency) => (
+                    <option key={currency.code} value={currency.code}>
+                      {currency.flag} {currency.code} - {currency.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Initial Balance */}
+              <div>
+                <label className="block text-sm font-medium text-light-text dark:text-dark-text mb-2">
+                  Initial Balance
+                </label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    value={initialBalance}
+                    onChange={(e) => setInitialBalance(e.target.value)}
+                    placeholder="0.00"
+                    min="0"
+                    step="0.01"
+                    className="w-full px-4 py-3 bg-light-glass dark:bg-dark-glass border border-light-border dark:border-dark-border rounded-xl text-light-text dark:text-dark-text placeholder-light-text-secondary dark:placeholder-dark-text-secondary focus:outline-none focus:border-lime-accent/50 transition-colors"
+                  />
+                  {newCurrencyCode && (
+                    <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-light-text-secondary dark:text-dark-text-secondary">
+                      {availableCurrencies.find(c => c.code === newCurrencyCode)?.symbol}
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-light-text-secondary dark:text-dark-text-secondary mt-1">
+                  Enter the amount you want to add to this currency wallet
+                </p>
+              </div>
+
+              {/* Selected Currency Preview */}
+              {newCurrencyCode && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="p-4 bg-light-glass dark:bg-dark-glass rounded-xl border border-light-border dark:border-dark-border"
+                >
+                  <div className="flex items-center space-x-3">
+                    <span className="text-2xl">
+                      {availableCurrencies.find(c => c.code === newCurrencyCode)?.flag}
+                    </span>
+                    <div>
+                      <p className="font-medium text-light-text dark:text-dark-text">
+                        {availableCurrencies.find(c => c.code === newCurrencyCode)?.name}
+                      </p>
+                      <p className="text-sm text-light-text-secondary dark:text-dark-text-secondary">
+                        {newCurrencyCode} • {availableCurrencies.find(c => c.code === newCurrencyCode)?.symbol}
+                      </p>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex space-x-3 mt-8">
+              <button
+                onClick={() => setShowAddCurrency(false)}
+                className="flex-1 px-4 py-3 bg-light-glass dark:bg-dark-glass border border-light-border dark:border-dark-border rounded-xl text-light-text dark:text-dark-text hover:border-lime-accent/30 transition-colors"
+              >
+                Cancel
+              </button>
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={handleAddCurrency}
+                disabled={!newCurrencyCode || !initialBalance}
+                className="flex-1 bg-lime-accent text-light-base dark:text-dark-base px-4 py-3 rounded-xl font-medium hover:shadow-glow transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Add Currency
+              </button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
     </div>
   );
 };

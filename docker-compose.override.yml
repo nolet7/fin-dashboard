@@ -6,12 +6,17 @@ services:
     environment:
       - VITE_APP_ENV=development
       - CHOKIDAR_USEPOLLING=true
+      # Override DB_HOST when using containerized postgres
+      - DB_HOST=${DB_HOST:-postgres}
     volumes:
       - .:/app
       - /app/node_modules
       - /app/dist
 
-  # Override for using external PostgreSQL
+  # When 'db' profile is active, use containerized postgres
   postgres:
-    # Uncomment to disable the containerized PostgreSQL
-      - disabled
+    environment:
+      # Override for dev profile with containerized DB
+      - POSTGRES_DB=${DB_NAME:-financehub}
+      - POSTGRES_USER=${DB_USER:-admin}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-postgres}

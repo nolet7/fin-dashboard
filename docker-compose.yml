@@ -7,11 +7,11 @@ services:
       - "${APP_PORT:-3000}:80"
     environment:
       - NODE_ENV=${NODE_ENV:-production}
-      - VITE_DB_HOST=${DB_HOST}
-      - VITE_DB_PORT=${DB_PORT}
-      - VITE_DB_NAME=${DB_NAME}
-      - VITE_DB_USER=${DB_USER}
-      - VITE_DB_PASSWORD=${DB_PASSWORD}
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_NAME=${DB_NAME:-financehub}
+      - DB_USER=${DB_USER:-admin}
+      - DB_PASSWORD=${DB_PASSWORD}
     restart: unless-stopped
     container_name: financehub-app
     networks:
@@ -31,11 +31,11 @@ services:
       - /app/node_modules
     environment:
       - NODE_ENV=development
-      - VITE_DB_HOST=${DB_HOST}
-      - VITE_DB_PORT=${DB_PORT}
-      - VITE_DB_NAME=${DB_NAME}
-      - VITE_DB_USER=${DB_USER}
-      - VITE_DB_PASSWORD=${DB_PASSWORD}
+      - DB_HOST=${DB_HOST:-localhost}
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_NAME=${DB_NAME:-financehub}
+      - DB_USER=${DB_USER:-admin}
+      - DB_PASSWORD=${DB_PASSWORD}
       - VITE_API_URL=${API_URL:-http://localhost:3001}
     restart: unless-stopped
     container_name: financehub-dev
@@ -44,13 +44,13 @@ services:
     profiles:
       - dev
 
-  # PostgreSQL Database (optional - use if you want containerized DB)
+  # PostgreSQL Database (optional - only for local development with 'db' profile)
   postgres:
     image: postgres:15-alpine
     environment:
-      - POSTGRES_DB=${DB_NAME}
-      - POSTGRES_USER=${DB_USER}
-      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=${DB_NAME:-financehub}
+      - POSTGRES_USER=${DB_USER:-admin}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-postgres}
       - POSTGRES_HOST_AUTH_METHOD=trust
     ports:
       - "${DB_PORT:-5432}:5432"

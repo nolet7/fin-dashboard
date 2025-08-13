@@ -22,22 +22,20 @@ A modern, responsive financial dashboard built with React, TypeScript, and Tailw
 cp .env.example .env
 ```
 
-2. **Update database configuration in `.env`:**
+2. **Update database configuration in `.env` with your external PostgreSQL details:**
 ```env
-DB_HOST=192.168.0.103
+# Connection string format: postgresql://admin:<PASSWORD>@<DB_HOST>:5432/financehub
+DB_HOST=<YOUR_DB_HOST>
 DB_PORT=5432
 DB_NAME=financehub
-DB_USER=your_username
-DB_PASSWORD=your_password
+DB_USER=admin
+DB_PASSWORD=<YOUR_DB_PASSWORD>
 ```
 
-3. **Set up your PostgreSQL database:**
+3. **Run database migration against external PostgreSQL:**
 ```sql
--- Connect to your PostgreSQL server
-psql -h 192.168.0.103 -U your_username -d financehub
-
--- Run the migration script
-\i supabase/migrations/20250722215635_stark_band.sql
+# Run the migration directly
+psql "postgresql://admin:<PASSWORD>@<DB_HOST>:5432/financehub" -f supabase/migrations/20250722215635_stark_band.sql
 ```
 
 ### Using Docker (Recommended)
@@ -201,16 +199,16 @@ JWT_SECRET=your_jwt_secret
 
 1. **Configure environment:**
 ```env
-DB_HOST=192.168.0.103
+DB_HOST=<YOUR_DB_HOST>
 DB_PORT=5432
 DB_NAME=financehub
-DB_USER=your_username
-DB_PASSWORD=your_password
+DB_USER=admin
+DB_PASSWORD=<YOUR_DB_PASSWORD>
 ```
 
 2. **Run migrations:**
 ```bash
-psql -h 192.168.0.103 -U your_username -d financehub -f supabase/migrations/20250722215635_stark_band.sql
+psql "postgresql://admin:<PASSWORD>@<DB_HOST>:5432/financehub" -f supabase/migrations/20250722215635_stark_band.sql
 ```
 
 ### Using Containerized PostgreSQL
@@ -227,6 +225,43 @@ DB_PASSWORD=your_password
 2. **Start with database:**
 ```bash
 docker-compose --profile db up --build
+```
+
+## Kubernetes (Helm) Deployment
+
+### 1. Create Database Secret
+
+```bash
+# Create the database secret in your namespace
+kubectl -n financehub create secret generic financehub-db \
+  --from-literal=DB_HOST=<YOUR_DB_HOST> \
+  --from-literal=DB_PASSWORD=<YOUR_DB_PASSWORD>
+```
+
+### 2. Deploy with Helm
+
+```bash
+# Option 1: Using envFromSecret (recommended)
+helm upgrade --install financehub ./helm \
+  --namespace financehub \
+  --set envFromSecret=financehub-db
+
+# Option 2: Using individual env values
+helm upgrade --install financehub ./helm \
+  --namespace financehub \
+  --set env.DB_HOST=<YOUR_DB_HOST> \
+  --set env.DB_PASSWORD=<YOUR_DB_PASSWORD>
+```
+
+### 3. Run Database Migration
+
+```bash
+# Run migration as a Kubernetes job or manually
+kubectl -n financehub run migration --rm -i --restart=Never \
+  --image=postgres:15-alpine \
+  --env="PGPASSWORD=<YOUR_DB_PASSWORD>" \
+  -- psql "postgresql://admin:<PASSWORD>@<DB_HOST>:5432/financehub" \
+  -c "$(cat supabase/migrations/20250722215635_stark_band.sql)"
 ```
 
 ## Contributing

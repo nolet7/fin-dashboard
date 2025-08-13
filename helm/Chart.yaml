@@ -1,0 +1,18 @@
+apiVersion: v2
+name: financehub
+description: A Helm chart for FinanceHub - Global Banking Platform
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - fintech
+  - banking
+  - finance
+  - react
+  - postgresql
+home: https://github.com/your-org/financehub
+sources:
+  - https://github.com/your-org/financehub
+maintainers:
+  - name: FinanceHub Team
+    email: team@financehub.com

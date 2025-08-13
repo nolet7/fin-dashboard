@@ -1,0 +1,48 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: financehub
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/your-org/financehub
+    targetRevision: HEAD
+    path: helm
+    helm:
+      valueFiles:
+        - values.yaml
+      parameters:
+        - name: envFromSecret
+          value: "financehub-db"
+        - name: image.tag
+          value: "latest"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: financehub
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false  # Namespace should be created manually
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+  revisionHistoryLimit: 10
+---
+# Note: Create the namespace and database secret manually before deploying:
+#
+# kubectl create namespace financehub
+# 
+# kubectl -n financehub create secret generic financehub-db \
+#   --from-literal=DB_HOST=<YOUR_DB_HOST> \
+#   --from-literal=DB_PORT=5432 \
+#   --from-literal=DB_NAME=financehub \
+#   --from-literal=DB_USER=admin \
+#   --from-literal=DB_PASSWORD=<YOUR_DB_PASSWORD>
+#
+# Run database migration:
+# psql "postgresql://admin:<PASSWORD>@<DB_HOST>:5432/financehub" \
+#   -f supabase/migrations/20250722215635_stark_band.sql

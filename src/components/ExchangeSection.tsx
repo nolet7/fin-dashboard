@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowUpDown, TrendingUp, TrendingDown, RefreshCw, Calculator } from 'lucide-react';
+import { useWallet } from '../contexts/WalletContext';
 
 const exchangeRates = [
   { pair: 'EUR/USD', rate: 1.0892, change: +0.0023, changePercent: +0.21, flag1: '🇪🇺', flag2: '🇺🇸' },
@@ -12,12 +13,13 @@ const exchangeRates = [
 ];
 
 export const ExchangeSection: React.FC = () => {
+  const { currencies } = useWallet();
   const [fromCurrency, setFromCurrency] = useState('USD');
   const [toCurrency, setToCurrency] = useState('EUR');
   const [fromAmount, setFromAmount] = useState('1000');
   const [toAmount, setToAmount] = useState('892.30');
 
-  const currencies = ['USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD'];
+  const availableCurrencyCodes = currencies.map(c => c.code);
 
   return (
     <div className="space-y-6">
@@ -63,7 +65,7 @@ export const ExchangeSection: React.FC = () => {
                 onChange={(e) => setFromCurrency(e.target.value)}
                 className="bg-light-glass dark:bg-dark-glass border border-light-border dark:border-dark-border rounded-l-xl px-4 py-3 text-light-text dark:text-dark-text focus:outline-none focus:border-lime-accent/50 transition-colors"
               >
-                {currencies.map(curr => (
+                {availableCurrencyCodes.map(curr => (
                   <option key={curr} value={curr}>{curr}</option>
                 ))}
               </select>
@@ -97,7 +99,7 @@ export const ExchangeSection: React.FC = () => {
                 onChange={(e) => setToCurrency(e.target.value)}
                 className="bg-light-glass dark:bg-dark-glass border border-light-border dark:border-dark-border rounded-l-xl px-4 py-3 text-light-text dark:text-dark-text focus:outline-none focus:border-lime-accent/50 transition-colors"
               >
-                {currencies.map(curr => (
+                {availableCurrencyCodes.map(curr => (
                   <option key={curr} value={curr}>{curr}</option>
                 ))}
               </select>

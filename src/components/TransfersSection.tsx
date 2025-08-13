@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Send, ArrowUpRight, ArrowDownLeft, Clock, CheckCircle, XCircle, Search, Filter } from 'lucide-react';
+import { useWallet } from '../contexts/WalletContext';
 
 const transfers = [
   {
@@ -72,6 +73,7 @@ const statusConfig = {
 };
 
 export const TransfersSection: React.FC = () => {
+  const { currencies } = useWallet();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [showNewTransfer, setShowNewTransfer] = useState(false);
@@ -110,10 +112,10 @@ export const TransfersSection: React.FC = () => {
       {/* Quick Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         {[
-          { label: 'Total Sent', value: '$45,230', change: '+12%', color: 'text-blue-400' },
-          { label: 'Total Received', value: '$32,180', change: '+8%', color: 'text-lime-accent' },
+          { label: 'Total Sent', value: `$${currencies.reduce((sum, c) => sum + (c.balance * 0.1), 0).toLocaleString()}`, change: '+12%', color: 'text-blue-400' },
+          { label: 'Total Received', value: `$${currencies.reduce((sum, c) => sum + (c.balance * 0.05), 0).toLocaleString()}`, change: '+8%', color: 'text-lime-accent' },
           { label: 'Pending', value: '3', change: '-2', color: 'text-yellow-400' },
-          { label: 'This Month', value: '$8,420', change: '+15%', color: 'text-purple-400' },
+          { label: 'This Month', value: `$${currencies.reduce((sum, c) => sum + (c.balance * 0.02), 0).toLocaleString()}`, change: '+15%', color: 'text-purple-400' },
         ].map((stat, index) => (
           <motion.div
             key={stat.label}

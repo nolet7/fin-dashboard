@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Wallet, TrendingUp, Send, BarChart3, Settings } from 'lucide-react';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { WalletProvider } from './contexts/WalletContext';
 import { LoadingScreen } from './components/LoadingScreen';
 import { LoginForm } from './components/LoginForm';
 import { Sidebar } from './components/Sidebar';
@@ -54,7 +55,9 @@ const App: React.FC = () => {
   return (
     <ThemeProvider>
       <AuthProvider>
-        <AppContent />
+        <WalletProvider>
+          <AppContent />
+        </WalletProvider>
       </AuthProvider>
     </ThemeProvider>
   );

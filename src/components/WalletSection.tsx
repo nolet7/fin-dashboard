@@ -1,24 +1,18 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Plus, Send, ArrowUpDown, Eye, EyeOff, TrendingUp, TrendingDown, CreditCard, X } from 'lucide-react';
-
-const currencies = [
-  { code: 'USD', symbol: '$', balance: 12847.32, change: +2.34, flag: '🇺🇸', color: 'bg-blue-500' },
-  { code: 'EUR', symbol: '€', balance: 8923.41, change: -1.12, flag: '🇪🇺', color: 'bg-purple-500' },
-  { code: 'GBP', symbol: '£', balance: 6432.18, change: +0.89, flag: '🇬🇧', color: 'bg-green-500' },
-  { code: 'JPY', symbol: '¥', balance: 1234567, change: -0.45, flag: '🇯🇵', color: 'bg-red-500' },
-  { code: 'CAD', symbol: 'C$', balance: 3456.78, change: +1.23, flag: '🇨🇦', color: 'bg-orange-500' },
-  { code: 'AUD', symbol: 'A$', balance: 2789.45, change: +0.67, flag: '🇦🇺', color: 'bg-yellow-500' },
-];
+import { useWallet } from '../contexts/WalletContext';
 
 export const WalletSection: React.FC = () => {
+  const { currencies, addCurrency, getTotalValue } = useWallet();
   const [showBalances, setShowBalances] = useState(true);
   const [selectedCurrency, setSelectedCurrency] = useState('USD');
   const [showAddCurrency, setShowAddCurrency] = useState(false);
   const [newCurrencyCode, setNewCurrencyCode] = useState('');
   const [initialBalance, setInitialBalance] = useState('');
+  const [isAddingCurrency, setIsAddingCurrency] = useState(false);
 
-  const totalValue = currencies.reduce((sum, curr) => sum + curr.balance, 0);
+  const totalValue = getTotalValue();
 
   const availableCurrencies = [
     { code: 'CHF', name: 'Swiss Franc', symbol: 'CHF', flag: '🇨🇭' },
@@ -41,24 +35,43 @@ export const WalletSection: React.FC = () => {
     { code: 'NZD', name: 'New Zealand Dollar', symbol: 'NZ$', flag: '🇳🇿' },
   ].filter(curr => !currencies.some(existing => existing.code === curr.code));
 
-  const handleAddCurrency = () => {
+  const handleAddCurrency = async () => {
     if (newCurrencyCode && initialBalance) {
       const selectedCurr = availableCurrencies.find(c => c.code === newCurrencyCode);
       if (selectedCurr) {
-        // In a real app, this would make an API call to add the currency
-        console.log('Adding currency:', {
-          code: newCurrencyCode,
-          balance: parseFloat(initialBalance),
-          currency: selectedCurr
-        });
+        setIsAddingCurrency(true);
         
-        // Reset form and close modal
-        setNewCurrencyCode('');
-        setInitialBalance('');
-        setShowAddCurrency(false);
-        
-        // Show success message (you could add a toast notification here)
-        alert(`${selectedCurr.name} wallet added successfully!`);
+        try {
+          // Generate a random color for the new currency
+          const colors = ['bg-indigo-500', 'bg-pink-500', 'bg-teal-500', 'bg-cyan-500', 'bg-emerald-500', 'bg-violet-500'];
+          const randomColor = colors[Math.floor(Math.random() * colors.length)];
+          
+          // Add currency using context
+          const newCurrency = {
+            code: selectedCurr.code,
+            symbol: selectedCurr.symbol,
+            balance: parseFloat(initialBalance),
+            change: 0, // New currencies start with 0% change
+            flag: selectedCurr.flag,
+            color: randomColor
+          };
+          
+          addCurrency(newCurrency);
+          
+          // Reset form and close modal
+          setNewCurrencyCode('');
+          setInitialBalance('');
+          setShowAddCurrency(false);
+          
+          // Success feedback
+          console.log(`${selectedCurr.name} wallet added successfully!`);
+          
+        } catch (error) {
+          console.error('Error adding currency:', error);
+          alert('Failed to add currency. Please try again.');
+        } finally {
+          setIsAddingCurrency(false);
+        }
       }
     }
   };
@@ -303,10 +316,17 @@ export const WalletSection: React.FC = () => {
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={handleAddCurrency}
-                disabled={!newCurrencyCode || !initialBalance}
-                className="flex-1 bg-lime-accent text-light-base dark:text-dark-base px-4 py-3 rounded-xl font-medium hover:shadow-glow transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={!newCurrencyCode || !initialBalance || isAddingCurrency}
+                className="flex-1 bg-lime-accent text-light-base dark:text-dark-base px-4 py-3 rounded-xl font-medium hover:shadow-glow transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
               >
-                Add Currency
+                {isAddingCurrency ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-light-base dark:border-dark-base border-t-transparent rounded-full animate-spin"></div>
+                    <span>Adding...</span>
+                  </>
+                ) : (
+                  <span>Add Currency</span>
+                )}
               </motion.button>
             </div>
           </motion.div>

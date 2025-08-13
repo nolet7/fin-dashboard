@@ -297,7 +297,7 @@ export const WalletSection: React.FC = () => {
                 className="flex-1 bg-lime-accent text-light-base dark:text-dark-base px-4 py-3 rounded-xl font-medium hover:shadow-glow transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Add Currency
-              </button>
+              </motion.button>
             </div>
           </motion.div>
         </motion.div>

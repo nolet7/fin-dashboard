@@ -7,19 +7,21 @@ COPY . .
 RUN npm run build
 
 # ---- runtime (non-root, port 8080) ----
-# This image runs as an unprivileged user and listens on 8080 by default
 FROM nginxinc/nginx-unprivileged:1.27.2-alpine
 
 # Static files
 COPY --from=build /app/dist /usr/share/nginx/html
 
-# Site config (vhost)
+# vhost config (no http{} wrapper)
 COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# í±‡ satisfy CKV_DOCKER_3 and make it explicit weâ€™re non-root
+USER 101
 
 EXPOSE 8080
 
-# Liveness/readiness for scanners
+# Healthcheck for scanners/ops
 HEALTHCHECK --interval=30s --timeout=3s --retries=3 \
   CMD wget -q -O - http://127.0.0.1:8080/ >/dev/null 2>&1 || exit 1
+# CMD is inherited from base image (nginx -g 'daemon off;')
 
-# Base image already sets a non-root user and CMD ["nginx", "-g", "daemon off;"]

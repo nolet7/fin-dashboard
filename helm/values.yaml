@@ -2,7 +2,7 @@ replicaCount: 1
 
 image:
   repository: noletengine/financehub
-  tag: v1.0.11         # CI will keep bumping this automatically
+  tag: v1.0.13
   pullPolicy: IfNotPresent
 
 # App Service (container listens on 80)

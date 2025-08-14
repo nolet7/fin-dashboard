@@ -2,7 +2,7 @@ replicaCount: 2
 
 image:
   repository: noletengine/financehub
-  tag: v1.0.11         # CI will bump this
+  tag: v1.0.20
   pullPolicy: IfNotPresent
 
 service:

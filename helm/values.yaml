@@ -2,7 +2,7 @@ replicaCount: 2
 
 image:
   repository: noletengine/financehub
-  tag: latest
+  tag: v1.0.9
   pullPolicy: IfNotPresent
 
 service:

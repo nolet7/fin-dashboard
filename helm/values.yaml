@@ -14,7 +14,7 @@ ingress:
   className: nginx
   annotations: {}
   hosts:
-    - host: financehub.local
+    - host: 45-77-97-228.nip.io
       paths:
         - path: /
           pathType: Prefix

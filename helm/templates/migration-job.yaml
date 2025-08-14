@@ -1,0 +1,38 @@
+{{- if .Values.migration.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: {{ include "financehub.fullname" . }}-migrate-
+  namespace: {{ .Values.namespaceOverride }}
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+spec:
+  backoffLimit: {{ .Values.migration.backoffLimit }}
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: {{ .Values.migration.image }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.envFromSecret }}
+          command: ["sh","-lc"]
+          args:
+            - >
+              psql "postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
+              -v ON_ERROR_STOP=1
+              -f /migrations/migration.sql
+          volumeMounts:
+            - name: migration-sql
+              mountPath: /migrations
+      volumes:
+        - name: migration-sql
+          configMap:
+            name: {{ include "financehub.fullname" . }}-migration
+            items:
+              - key: migration.sql
+                path: migration.sql
+{{- end }}
+

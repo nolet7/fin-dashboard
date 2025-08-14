@@ -1,0 +1,11 @@
+{{- if .Values.migration.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "financehub.fullname" . }}-migration
+  namespace: {{ .Values.namespaceOverride }}
+data:
+  migration.sql: |-
+{{ .Files.Get .Values.migration.sqlFile | indent 4 }}
+{{- end }}
+

@@ -9,6 +9,5 @@ spec:
     app: {{ include "financehub.fullname" . }}
   ports:
     - name: http
-      port: {{ .Values.service.port }}
-      targetPort: http
-      protocol: TCP
+      port: {{ .Values.service.port }}                           # cluster-facing (80)
+      targetPort: {{ .Values.service.targetPort | default 8080 }} # container port (8080)

@@ -1,32 +1,25 @@
-# Use Node.js 18 Alpine as base image
-FROM node:18-alpine as builder
-
-# Set working directory
+# ---- build stage ----
+FROM node:20.11-alpine AS build
 WORKDIR /app
-
-# Copy package files
 COPY package*.json ./
-
-# Install dependencies
-RUN npm ci
-
-# Copy source code
+RUN npm ci --no-audit --no-fund
 COPY . .
-
-# Build the application
 RUN npm run build
 
-# Production stage
-FROM nginx:alpine
+# ---- runtime (non-root, port 8080) ----
+# This image runs as an unprivileged user and listens on 8080 by default
+FROM nginxinc/nginx-unprivileged:1.27.2-alpine
 
-# Copy built assets from builder stage
-COPY --from=builder /app/dist /usr/share/nginx/html
+# Static files
+COPY --from=build /app/dist /usr/share/nginx/html
 
-# Copy nginx configuration
-COPY nginx.conf /etc/nginx/nginx.conf
+# Site config (vhost)
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Expose port 80
-EXPOSE 80
+EXPOSE 8080
 
-# Start nginx
-CMD ["nginx", "-g", "daemon off;"]
+# Liveness/readiness for scanners
+HEALTHCHECK --interval=30s --timeout=3s --retries=3 \
+  CMD wget -q -O - http://127.0.0.1:8080/ >/dev/null 2>&1 || exit 1
+
+# Base image already sets a non-root user and CMD ["nginx", "-g", "daemon off;"]

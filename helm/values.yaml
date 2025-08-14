@@ -1,25 +1,25 @@
-replicaCount: 1
+replicaCount: 2
 
 image:
   repository: noletengine/financehub
-  tag: v1.0.13
+  tag: v1.0.11         # CI will bump this
   pullPolicy: IfNotPresent
 
-# App Service (container listens on 80)
 service:
   type: ClusterIP
   port: 80
+  targetPort: 8080     # <--- NEW
 
 ingress:
   enabled: true
   className: nginx
   annotations: {}
   hosts:
-    - host: 45-77-97-228.nip.io   # CI can also set this from repo var
+    - host: 45-77-97-228.nip.io
       paths:
         - path: /
           pathType: Prefix
-  tls: []                         # e.g. [{hosts: ["your.host"], secretName: tls-secret}]
+  tls: []
 
 resources:
   limits:
@@ -40,18 +40,3 @@ namespaceOverride: financehub
 nodeSelector: {}
 tolerations: []
 affinity: {}
-
-# === Additions for full automation ===
-
-# The app + migration Job will read DB_* from this Secret
-envFromSecret: financehub-db
-
-# PostSync migration (runs on every Argo CD sync)
-migration:
-  enabled: true
-  image: postgres:16-alpine
-  # NOTE: this file path is relative to the chart root.
-  # Put the SQL here: helm/files/migrations/20250722215635_stark_band.sql
-  sqlFile: files/migrations/20250722215635_stark_band.sql
-  backoffLimit: 1
-

@@ -1,65 +1,49 @@
-name: CI/CD - Docker Build, Helm Deploy, ArgoCD Sync
+name: CI/CD - Build & Push, Bump Helm (Argo deploys)
 
 on:
   push:
-    branches:
-      - feature/dev
-    paths:
-      - '**'
+    branches: [ "feature/dev" ]
+
+permissions:
+  contents: write  # allow committing the tag bump
 
 env:
-  REGISTRY: docker.io
-  IMAGE_NAME: noletengine/financehub
-  VERSION: v1.0.${{ github.run_number }}
-  CHART_DIR: ./helm
-  HELM_NS: financehub
+  IMAGE_REPO: docker.io/noletengine/financehub
+  VERSION: v1.0.${{ github.run_number }}  # keep your versioning scheme
 
 jobs:
-  build-push:
-    name: Build & Push Docker Image
-    runs-on: self-hosted
+  build-push-bump:
+    runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Login to DockerHub
-        run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+      - name: Setup Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Build & Push Image
+      - name: Docker Hub login
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build & push image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.IMAGE_REPO }}:${{ env.VERSION }}
+
+      - name: Bump Helm image tag
         run: |
-          docker build -t $REGISTRY/$IMAGE_NAME:$VERSION .
-          docker push $REGISTRY/$IMAGE_NAME:$VERSION
-
-  helm-deploy:
-    name: Update Helm Values, Deploy, and Push Changes
-    runs-on: self-hosted
-    needs: build-push
-
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
-
-      - name: Update Helm image tag
-        run: |
-          sed -i "s/tag: .*/tag: $VERSION/" "$CHART_DIR/values.yaml"
-
-      - name: Helm Deploy to Cluster
-        run: |
-          helm upgrade --install financehub $CHART_DIR \
-            --namespace $HELM_NS \
-            --create-namespace \
-            --wait
-
-      - name: Configure Git for Push
-        run: |
-          git config --global user.name "github-actions"
-          git config --global user.email "github@actions"
-          git remote set-url origin https://x-access-token:${{ secrets.GH_TOKEN }}@github.com/${{ github.repository }}
-
-      - name: Commit Helm Update
-        run: |
-          git add "$CHART_DIR/values.yaml"
-          git commit -m "chore: update Helm image tag to $VERSION" || echo "No changes to commit"
-          git push origin HEAD:feature/dev
+          sed -i 's#^\(\s*repository:\s*\).*#\1noletengine/financehub#' helm/values.yaml
+          sed -i 's#^\(\s*tag:\s*\).*#\1'${{ env.VERSION }}'#' helm/values.yaml
+          git config user.name  "github-actions"
+          git config user.email "github@actions"
+          git add helm/values.yaml
+          git commit -m "chore(ci): update image tag to ${{ env.VERSION }}" || echo "no changes"
+          git push
 

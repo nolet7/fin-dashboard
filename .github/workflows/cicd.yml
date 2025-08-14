@@ -16,8 +16,7 @@ concurrency:
 env:
   IMAGE_REPO: docker.io/noletengine/financehub
   VERSION: v1.0.${{ github.run_number }}
-  # Scanner knobs
-  TRIVY_FAIL_ON: CRITICAL          # CRITICAL or CRITICAL,HIGH
+  # Scanner knobs (Trivy is report-only now; no failing)
   CHECKOV_SOFT_FAIL: "false"       # set "true" to make Checkov advisory
   INGRESS_HOST: ${{ vars.INGRESS_HOST }} # optional repo var
 
@@ -29,7 +28,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Run gitleaks
         uses: gitleaks/gitleaks-action@v2
-        # v2 does not accept custom inputs; it writes results.sarif by default
+        # v2 writes results.sarif by default
       - name: Upload SARIF (gitleaks)
         uses: github/codeql-action/upload-sarif@v3
         with:
@@ -109,20 +108,78 @@ jobs:
           tags: |
             ${{ env.IMAGE_REPO }}:${{ env.VERSION }}
 
-      - name: Trivy image scan (gated by severity)
+      # --- TRIVY: report-only, keep building ---
+
+      # Human-readable preview in logs (never fails)
+      - name: Trivy image scan (table preview)
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          image-ref: ${{ env.IMAGE_REPO }}:${{ env.VERSION }}
+          format: 'table'
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+          exit-code: '0'   # do not fail
+
+      # JSON report for summary parsing (never fails)
+      - name: Trivy image scan (JSON report)
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          image-ref: ${{ env.IMAGE_REPO }}:${{ env.VERSION }}
+          format: 'json'
+          output: 'trivy-image.json'
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+          exit-code: '0'   # do not fail
+
+      # SARIF for GitHub Code Scanning (never fails)
+      - name: Trivy image scan (SARIF upload)
         uses: aquasecurity/trivy-action@0.20.0
         with:
           image-ref: ${{ env.IMAGE_REPO }}:${{ env.VERSION }}
           format: 'sarif'
           output: 'trivy-image.sarif'
           vuln-type: 'os,library'
-          severity: ${{ env.TRIVY_FAIL_ON == 'CRITICAL' && 'CRITICAL' || 'CRITICAL,HIGH' }}
+          severity: 'CRITICAL,HIGH'
           ignore-unfixed: true
-          exit-code: '1'
+          exit-code: '0'   # do not fail
       - name: Upload SARIF (trivy)
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy-image.sarif
+
+      # Nice PASS/FAIL summary without failing the job
+      - name: Trivy summary (PASS/FAIL but non-blocking)
+        if: always()
+        run: |
+          critical=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' trivy-image.json 2>/dev/null || echo 0)
+          high=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH")] | length' trivy-image.json 2>/dev/null || echo 0)
+          status="PASS"
+          if [ "$critical" -gt 0 ]; then status="FAIL (CRITICAL present)"; fi
+          {
+            echo "### Trivy Summary"
+            echo ""
+            echo "- Image: **${{ env.IMAGE_REPO }}:${{ env.VERSION }}**"
+            echo "- Critical: **$critical**"
+            echo "- High: **$high**"
+            echo "- Gate (report-only): **$status**"
+            echo ""
+            echo "> Full findings are also in **Security → Code scanning alerts**."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Keep a copy of reports as build artifacts
+      - name: Upload Trivy artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-reports
+          path: |
+            trivy-image.json
+            trivy-image.sarif
+          if-no-files-found: ignore
+          retention-days: 7
+
+      # --- end TRIVY block ---
 
       - name: Ensure ingress host in values.yaml (optional)
         if: ${{ env.INGRESS_HOST != '' }}

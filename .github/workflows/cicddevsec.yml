@@ -158,7 +158,6 @@ jobs:
       - name: Template Helm (safe defaults) and lint
         run: |
           if [ -d helm ]; then
-            # Prevent nil pointer errors by providing defaults for optional blocks
             helm template tmp-chart helm \
               --set-json 'migration={"enabled":false}' \
               --set-json 'cronjob={"enabled":false}' \
@@ -262,6 +261,7 @@ jobs:
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Build & push image
+        id: build               # <-- capture digest
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -270,10 +270,13 @@ jobs:
           tags: |
             ${{ env.IMAGE_REPO }}:${{ env.VERSION }}
 
+      - name: Show image digest
+        run: echo "DIGEST=${{ steps.build.outputs.digest }}"
+      
       - name: Generate SBOM (Syft)
         uses: anchore/sbom-action@v0
         with:
-          image: ${{ env.IMAGE_REPO }}:${{ env.VERSION }}
+          image: ${{ env.IMAGE_REPO }}@${{ steps.build.outputs.digest }}
           format: spdx-json
           output-file: sbom.spdx.json
       - name: Upload SBOM artifact
@@ -286,7 +289,7 @@ jobs:
       - name: Trivy image scan (table preview)
         uses: aquasecurity/trivy-action@0.20.0
         with:
-          image-ref: ${{ env.IMAGE_REPO }}:${{ env.VERSION }}
+          image-ref: ${{ env.IMAGE_REPO }}@${{ steps.build.outputs.digest }}
           format: table
           vuln-type: os,library
           severity: CRITICAL,HIGH
@@ -296,7 +299,7 @@ jobs:
       - name: Trivy image scan (JSON report)
         uses: aquasecurity/trivy-action@0.20.0
         with:
-          image-ref: ${{ env.IMAGE_REPO }}:${{ env.VERSION }}
+          image-ref: ${{ env.IMAGE_REPO }}@${{ steps.build.outputs.digest }}
           format: json
           output: trivy-image.json
           vuln-type: os,library
@@ -307,7 +310,7 @@ jobs:
       - name: Trivy image scan (SARIF upload)
         uses: aquasecurity/trivy-action@0.20.0
         with:
-          image-ref: ${{ env.IMAGE_REPO }}:${{ env.VERSION }}
+          image-ref: ${{ env.IMAGE_REPO }}@${{ steps.build.outputs.digest }}
           format: sarif
           output: trivy-image.sarif
           vuln-type: os,library
@@ -331,21 +334,22 @@ jobs:
       - name: Install Cosign
         uses: sigstore/cosign-installer@v3.8.1
 
-      - name: Cosign sign (keyless OIDC)
+      - name: Cosign sign (keyless OIDC, by digest)
         env:
           COSIGN_EXPERIMENTAL: "true"
         run: |
-          cosign sign ${{ env.IMAGE_REPO }}:${{ env.VERSION }} --yes
+          cosign sign ${{ env.IMAGE_REPO }}@${{ steps.build.outputs.digest }} --yes
 
-      - name: Create SLSA provenance predicate file
-        run: |
-          printf '{"builder":"github-actions","repo":"%s","run_id":"%s"}' "${{ github.repository }}" "${{ github.run_id }}" > provenance.json
-
-      - name: Cosign attest SLSA provenance
+      # Replace broken SLSA attestation with a signed SBOM attestation
+      - name: Cosign attach SBOM attestation (SPDX)
         env:
           COSIGN_EXPERIMENTAL: "true"
         run: |
-          cosign attest --type slsaprovenance --predicate provenance.json --yes ${{ env.IMAGE_REPO }}:${{ env.VERSION }}
+          cosign attest \
+            --predicate sbom.spdx.json \
+            --type spdx \
+            --yes \
+            ${{ env.IMAGE_REPO }}@${{ steps.build.outputs.digest }}
 
       - name: Trivy summary
         if: always()
@@ -355,13 +359,13 @@ jobs:
           {
             echo "## Security Summary"
             echo ""
-            echo "- Image: **${{ env.IMAGE_REPO }}:${{ env.VERSION }}**"
+            echo "- Image: **${{ env.IMAGE_REPO }}:${{ env.VERSION }}** (@${{ steps.build.outputs.digest }})"
             echo "- Critical: **$critical**"
             echo "- High: **$high**"
-            echo "- Cosign: **signed & attested (SLSA)**"
+            echo "- Cosign: **signed** (digest) & **SBOM attested (SPDX)**"
             echo "- SBOM: **sbom.spdx.json** (artifact)"
             echo ""
-            echo "> Full findings are available in **Security → Code scanning alerts** and as workflow artifacts."
+            echo "> Full findings in **Security → Code scanning alerts** and as workflow artifacts."
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Comment on PR with summary
@@ -377,10 +381,11 @@ jobs:
             const high = vulns.filter(v=>v.Severity==='HIGH').length;
             const body = [
               "### Security Summary",
-              `- Image: **${process.env.IMAGE_REPO}:${process.env.VERSION}**`,
+              `- Image: **${process.env.IMAGE_REPO}:${process.env.VERSION}** (@${process.env.GITHUB_SHA?.slice(0,7)})`,
               `- Critical: **${critical}**`,
               `- High: **${high}**`,
-              "- Cosign: **signed & attested**",
+              "- Cosign: **signed by digest**",
+              "- Attestation: **SBOM (SPDX)**",
               "- SBOM artifact: `sbom.spdx.json`",
               "",
               "> See Security → Code scanning alerts for full details."

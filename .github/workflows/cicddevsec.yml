@@ -23,7 +23,7 @@ env:
   CHECKOV_SOFT_FAIL: "false"
   TRIVY_BLOCK: "false"
   SEMGREP_FAIL: "false"
-  CODEQL_LANG: "python"
+  CODEQL_LANG: "javascript,typescript"   # <— was python; repo is JS/TS
   DAST_URL: "http://45-77-97-228.nip.io:30080/"
   DAST_FAIL: "false"
   INGRESS_HOST: ${{ vars.INGRESS_HOST }}
@@ -115,7 +115,7 @@ jobs:
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
         with:
-          languages: ${{ env.CODEQL_LANG }}
+          languages: ${{ env.CODEQL_LANG }}   # "javascript,typescript"
       - name: Autobuild
         uses: github/codeql-action/autobuild@v3
       - name: Analyze
@@ -387,7 +387,7 @@ jobs:
               `- Critical: **${critical}**`,
               `- High: **${high}**`,
               "- Cosign: **signed & attested**",
-              "- SBOM artifact: `sbom.spdx.json`",
+              "- SBOM artifact: \`sbom.spdx.json\`",
               "",
               "> See Security → Code scanning alerts for full details."
             ].join("\n");

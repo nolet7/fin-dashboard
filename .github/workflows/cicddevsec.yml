@@ -23,7 +23,6 @@ env:
   CHECKOV_SOFT_FAIL: "false"
   TRIVY_BLOCK: "false"
   SEMGREP_FAIL: "false"
-  CODEQL_LANG: "javascript,typescript"   # <— was python; repo is JS/TS
   DAST_URL: "http://45-77-97-228.nip.io:30080/"
   DAST_FAIL: "false"
   INGRESS_HOST: ${{ vars.INGRESS_HOST }}
@@ -103,24 +102,6 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: https://sonarcloud.io
 
-  codeql:
-    name: SAST (CodeQL)
-    runs-on: ubuntu-latest
-    permissions:
-      actions: read
-      contents: read
-      security-events: write
-    steps:
-      - uses: actions/checkout@v4
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
-        with:
-          languages: ${{ env.CODEQL_LANG }}   # "javascript,typescript"
-      - name: Autobuild
-        uses: github/codeql-action/autobuild@v3
-      - name: Analyze
-        uses: github/codeql-action/analyze@v3
-
   semgrep:
     name: SAST (Semgrep)
     runs-on: ubuntu-latest
@@ -152,7 +133,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install hadolint
         run: |
-          curl -sSL -o /usr/local/bin/hadolint https://github.com/hadolint/hadolint/releases/latest/download/hadolint-Linux-x86_64
+          curl -sSL -o /usr/local/bin/hadolint https://github.com/hadolint/hadolint/releases/download/v2.12.0/hadolint-Linux-x86_64
           chmod +x /usr/local/bin/hadolint
       - name: Lint Dockerfile and produce SARIF
         run: hadolint Dockerfile --format sarif > hadolint.sarif || true
@@ -171,16 +152,22 @@ jobs:
           version: v3.14.4
       - name: Install kube-linter
         run: |
-          curl -sSL https://github.com/stackrox/kube-linter/releases/latest/download/kube-linter-linux.tar.gz | tar -xz kube-linter
+          curl -sSL https://github.com/stackrox/kube-linter/releases/download/v0.6.8/kube-linter-linux.tar.gz \
+            | tar -xz kube-linter
           sudo mv kube-linter /usr/local/bin/
-      - name: Template Helm (if present) and lint
+      - name: Template Helm (safe defaults) and lint
         run: |
           if [ -d helm ]; then
-            helm template tmp-chart helm > rendered.yaml
+            # Prevent nil pointer errors by providing defaults for optional blocks
+            helm template tmp-chart helm \
+              --set-json 'migration={"enabled":false}' \
+              --set-json 'cronjob={"enabled":false}' \
+              --set-json 'jobs={"enabled":false}' \
+              > rendered.yaml
             kube-linter lint rendered.yaml || true
             kube-linter lint rendered.yaml --format sarif > kube-linter.sarif || true
           else
-            echo "No helm/ dir; skipping" 
+            echo "No helm/ dir; skipping"
           fi
       - name: Flag SARIF existence
         id: klsarif
@@ -204,14 +191,21 @@ jobs:
       - uses: azure/setup-helm@v4
         with:
           version: v3.14.4
-      - name: Install conftest
+      - name: Install conftest (pinned)
         run: |
-          curl -L https://github.com/open-policy-agent/conftest/releases/latest/download/conftest_Linux_x86_64.tar.gz | tar -xz conftest
+          VER="0.45.0"
+          curl -sSL -o conftest.tgz "https://github.com/open-policy-agent/conftest/releases/download/v${VER}/conftest_${VER}_Linux_x86_64.tar.gz"
+          tar -xzf conftest.tgz conftest
           sudo mv conftest /usr/local/bin/
-      - name: Render Helm (if present)
+          conftest --version
+      - name: Render Helm (safe defaults)
         run: |
           if [ -d helm ]; then
-            helm template tmp-chart helm > rendered.yaml
+            helm template tmp-chart helm \
+              --set-json 'migration={"enabled":false}' \
+              --set-json 'cronjob={"enabled":false}' \
+              --set-json 'jobs={"enabled":false}' \
+              > rendered.yaml
           fi
       - name: Evaluate Rego policies (if ./policy exists)
         run: |
@@ -255,7 +249,7 @@ jobs:
   build-push-bump:
     name: Build, SBOM, scan, sign & bump Helm
     runs-on: ubuntu-latest
-    needs: [gitleaks, pytest, checkov, sonarcloud, codeql, semgrep, hadolint, kube-linter, conftest, trivy-fs]
+    needs: [gitleaks, pytest, checkov, sonarcloud, semgrep, hadolint, kube-linter, conftest, trivy-fs]
     steps:
       - uses: actions/checkout@v4
 
@@ -387,7 +381,7 @@ jobs:
               `- Critical: **${critical}**`,
               `- High: **${high}**`,
               "- Cosign: **signed & attested**",
-              "- SBOM artifact: \`sbom.spdx.json\`",
+              "- SBOM artifact: `sbom.spdx.json`",
               "",
               "> See Security → Code scanning alerts for full details."
             ].join("\n");

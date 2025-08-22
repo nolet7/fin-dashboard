@@ -12,7 +12,7 @@ permissions:
   actions: read
   id-token: write
   packages: read
-  issues: write   # allow ZAP to create/update an issue with the report
+  issues: write   # ZAP creates/updates an Issue with the baseline results
 
 concurrency:
   group: cicd-${{ github.ref }}
@@ -386,7 +386,7 @@ jobs:
               `- High: **${high}**`,
               "- Cosign: **signed by digest**",
               "- Attestation: **SBOM (SPDX)**",
-              "- SBOM artifact: `sbom.spdx.json`",
+              "- SBOM artifact: \`sbom.spdx.json\`",
               "",
               "> See Security → Code scanning alerts for full details."
             ].join("\n");
@@ -418,10 +418,23 @@ jobs:
     needs: [build-push-bump]
     steps:
       - name: ZAP Baseline Scan
+        id: zap
         uses: zaproxy/action-baseline@v0.12.0
         with:
           target: ${{ env.DAST_URL }}
           cmd_options: "-a"
           fail_action: ${{ env.DAST_FAIL }}
-          artifact_name: zap-baseline-${{ github.run_id }}
+          artifact_name: zap_baseline_${{ github.run_id }}   # safe name (letters, numbers, underscores)
+
+      # Also upload the reports ourselves so we always have them
+      - name: Upload ZAP reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap_reports_${{ github.run_id }}
+          path: |
+            report_json.json
+            report_md.md
+            report_html.html
+          retention-days: 14
 

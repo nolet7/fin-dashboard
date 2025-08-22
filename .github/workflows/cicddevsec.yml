@@ -12,6 +12,7 @@ permissions:
   actions: read
   id-token: write
   packages: read
+  issues: write   # allow ZAP to create/update an issue with the report
 
 concurrency:
   group: cicd-${{ github.ref }}
@@ -261,7 +262,7 @@ jobs:
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Build & push image
-        id: build               # <-- capture digest
+        id: build
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -272,7 +273,7 @@ jobs:
 
       - name: Show image digest
         run: echo "DIGEST=${{ steps.build.outputs.digest }}"
-      
+
       - name: Generate SBOM (Syft)
         uses: anchore/sbom-action@v0
         with:
@@ -340,7 +341,6 @@ jobs:
         run: |
           cosign sign ${{ env.IMAGE_REPO }}@${{ steps.build.outputs.digest }} --yes
 
-      # Replace broken SLSA attestation with a signed SBOM attestation
       - name: Cosign attach SBOM attestation (SPDX)
         env:
           COSIGN_EXPERIMENTAL: "true"

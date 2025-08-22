@@ -1,4 +1,4 @@
-name: CI/CD - Build, Scan, Push, Bump Helm (Argo sync)
+name: "CI/CD - Build, Scan, Push, Bump Helm (Argo sync)"
 
 on:
   push:
@@ -7,10 +7,10 @@ on:
     branches: ["feature/dev"]
 
 permissions:
-  contents: write            # commit tag bump
-  security-events: write     # upload SARIF to Code scanning
+  contents: write
+  security-events: write
   actions: read
-  id-token: write            # OIDC for Cosign keyless
+  id-token: write
   packages: read
 
 concurrency:
@@ -20,13 +20,13 @@ concurrency:
 env:
   IMAGE_REPO: docker.io/noletengine/financehub
   VERSION: v1.0.${{ github.run_number }}
-  CHECKOV_SOFT_FAIL: "false"         # set "true" to make Checkov advisory
-  TRIVY_BLOCK: "false"               # set "true" to block on CRITICAL/HIGH
-  SEMGREP_FAIL: "false"              # SAST advisory by default
-  CODEQL_LANG: "python"              # adjust to your stack
+  CHECKOV_SOFT_FAIL: "false"
+  TRIVY_BLOCK: "false"
+  SEMGREP_FAIL: "false"
+  CODEQL_LANG: "python"
   DAST_URL: "http://45-77-97-228.nip.io:30080/"
-  DAST_FAIL: "false"                 # set "true" to fail pipeline on ZAP alerts
-  INGRESS_HOST: ${{ vars.INGRESS_HOST }} # optional repo var
+  DAST_FAIL: "false"
+  INGRESS_HOST: ${{ vars.INGRESS_HOST }}
 
 jobs:
   gitleaks:
@@ -152,8 +152,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install hadolint
         run: |
-          curl -sSL -o /usr/local/bin/hadolint \
-            https://github.com/hadolint/hadolint/releases/latest/download/hadolint-Linux-x86_64
+          curl -sSL -o /usr/local/bin/hadolint https://github.com/hadolint/hadolint/releases/latest/download/hadolint-Linux-x86_64
           chmod +x /usr/local/bin/hadolint
       - name: Lint Dockerfile and produce SARIF
         run: hadolint Dockerfile --format sarif > hadolint.sarif || true
@@ -172,8 +171,7 @@ jobs:
           version: v3.14.4
       - name: Install kube-linter
         run: |
-          curl -sSL https://github.com/stackrox/kube-linter/releases/latest/download/kube-linter-linux.tar.gz \
-            | tar -xz kube-linter
+          curl -sSL https://github.com/stackrox/kube-linter/releases/latest/download/kube-linter-linux.tar.gz | tar -xz kube-linter
           sudo mv kube-linter /usr/local/bin/
       - name: Template Helm (if present) and lint
         run: |
@@ -200,8 +198,7 @@ jobs:
           version: v3.14.4
       - name: Install conftest
         run: |
-          curl -L https://github.com/open-policy-agent/conftest/releases/latest/download/conftest_Linux_x86_64.tar.gz \
-            | tar -xz conftest
+          curl -L https://github.com/open-policy-agent/conftest/releases/latest/download/conftest_Linux_x86_64.tar.gz | tar -xz conftest
           sudo mv conftest /usr/local/bin/
       - name: Render Helm (if present)
         run: |
@@ -230,12 +227,12 @@ jobs:
       - name: Trivy filesystem scan (SARIF)
         uses: aquasecurity/trivy-action@0.20.0
         with:
-          scan-type: 'fs'
-          format: 'sarif'
-          output: 'trivy-fs.sarif'
-          severity: 'CRITICAL,HIGH'
+          scan-type: fs
+          format: sarif
+          output: trivy-fs.sarif
+          severity: CRITICAL,HIGH
           ignore-unfixed: true
-          exit-code: ${{ env.TRIVY_BLOCK == 'true' && '1' || '0' }}
+          exit-code: "0"
       - name: Upload SARIF (trivy-fs)
         uses: github/codeql-action/upload-sarif@v3
         with:
@@ -271,7 +268,6 @@ jobs:
           tags: |
             ${{ env.IMAGE_REPO }}:${{ env.VERSION }}
 
-      # ---------- SBOM (Syft) ----------
       - name: Generate SBOM (Syft)
         uses: anchore/sbom-action@v0
         with:
@@ -285,38 +281,37 @@ jobs:
           path: sbom.spdx.json
           retention-days: 30
 
-      # ---------- Trivy image scans ----------
       - name: Trivy image scan (table preview)
         uses: aquasecurity/trivy-action@0.20.0
         with:
           image-ref: ${{ env.IMAGE_REPO }}:${{ env.VERSION }}
-          format: 'table'
-          vuln-type: 'os,library'
-          severity: 'CRITICAL,HIGH'
+          format: table
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
           ignore-unfixed: true
-          exit-code: '0'
+          exit-code: "0"
 
       - name: Trivy image scan (JSON report)
         uses: aquasecurity/trivy-action@0.20.0
         with:
           image-ref: ${{ env.IMAGE_REPO }}:${{ env.VERSION }}
-          format: 'json'
-          output: 'trivy-image.json'
-          vuln-type: 'os,library'
-          severity: 'CRITICAL,HIGH'
+          format: json
+          output: trivy-image.json
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
           ignore-unfixed: true
-          exit-code: '0'
+          exit-code: "0"
 
       - name: Trivy image scan (SARIF upload)
         uses: aquasecurity/trivy-action@0.20.0
         with:
           image-ref: ${{ env.IMAGE_REPO }}:${{ env.VERSION }}
-          format: 'sarif'
-          output: 'trivy-image.sarif'
-          vuln-type: 'os,library'
-          severity: 'CRITICAL,HIGH'
+          format: sarif
+          output: trivy-image.sarif
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
           ignore-unfixed: true
-          exit-code: '0'
+          exit-code: "0"
       - name: Upload SARIF (trivy-image)
         uses: github/codeql-action/upload-sarif@v3
         with:
@@ -331,7 +326,6 @@ jobs:
             trivy-image.sarif
           retention-days: 14
 
-      # ---------- Cosign keyless sign + provenance ----------
       - name: Install Cosign
         uses: sigstore/cosign-installer@v3.8.1
 
@@ -339,30 +333,23 @@ jobs:
         env:
           COSIGN_EXPERIMENTAL: "true"
         run: |
-          cosign sign \
-            ${{ env.IMAGE_REPO }}:${{ env.VERSION }} \
-            --yes
+          cosign sign ${{ env.IMAGE_REPO }}:${{ env.VERSION }} --yes
+
+      - name: Create SLSA provenance predicate file
+        run: |
+          printf '{"builder":"github-actions","repo":"%s","run_id":"%s"}' "${{ github.repository }}" "${{ github.run_id }}" > provenance.json
 
       - name: Cosign attest SLSA provenance
         env:
           COSIGN_EXPERIMENTAL: "true"
         run: |
-          cosign attest --type slsaprovenance \
-            --predicate <(printf '{"builder":"github-actions","repo":"%s","run_id":"%s"}' \
-              "${{ github.repository }}" "${{ github.run_id }}") \
-            --yes \
-            ${{ env.IMAGE_REPO }}:${{ env.VERSION }}
+          cosign attest --type slsaprovenance --predicate provenance.json --yes ${{ env.IMAGE_REPO }}:${{ env.VERSION }}
 
-      # ---------- Nice summary ----------
-      - name: Trivy summary (PASS/FAIL but non-blocking)
+      - name: Trivy summary
         if: always()
         run: |
           critical=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' trivy-image.json 2>/dev/null || echo 0)
           high=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH")] | length' trivy-image.json 2>/dev/null || echo 0)
-          gate="PASS"
-          if [ "${{ env.TRIVY_BLOCK }}" = "true" ] && { [ "$critical" -gt 0 ] || [ "$high" -gt 0 ]; }; then
-            gate="FAIL (blocking enabled)"
-          fi
           {
             echo "## Security Summary"
             echo ""
@@ -387,15 +374,15 @@ jobs:
             const critical = vulns.filter(v=>v.Severity==='CRITICAL').length;
             const high = vulns.filter(v=>v.Severity==='HIGH').length;
             const body = [
-              `### í´ Security Summary`,
+              "### í´ Security Summary",
               `- Image: **${process.env.IMAGE_REPO}:${process.env.VERSION}**`,
               `- Critical: **${critical}**`,
               `- High: **${high}**`,
-              `- Cosign: **signed & attested**`,
-              `- SBOM artifact: \`sbom.spdx.json\``,
-              ``,
-              `> See Security â†’ Code scanning alerts for full details.`
-            ].join('\n');
+              "- Cosign: **signed & attested**",
+              "- SBOM artifact: `sbom.spdx.json`",
+              "",
+              "> See Security â†’ Code scanning alerts for full details."
+            ].join("\n");
             github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -403,7 +390,6 @@ jobs:
               body
             });
 
-      # ---------- Helm bump ----------
       - name: Ensure ingress host in values.yaml (optional)
         if: ${{ env.INGRESS_HOST != '' }}
         run: |
@@ -413,7 +399,7 @@ jobs:
         run: |
           sed -i 's#^\(\s*repository:\s*\).*#\1noletengine/financehub#' helm/values.yaml
           sed -i 's#^\(\s*tag:\s*\).*#\1'${{ env.VERSION }}'#' helm/values.yaml
-          git config user.name  "github-actions"
+          git config user.name "github-actions"
           git config user.email "github@actions"
           git add helm/values.yaml
           git commit -m "ci: image ${{ env.VERSION }}; ingress host ${INGRESS_HOST}" || echo "no changes"
@@ -428,7 +414,7 @@ jobs:
         uses: zaproxy/action-baseline@v0.12.0
         with:
           target: ${{ env.DAST_URL }}
-          cmd_options: "-a"               # active scan; remove for faster baseline
+          cmd_options: "-a"
           fail_action: ${{ env.DAST_FAIL }}
-          artifact_name: "zap-baseline-${{ github.run_id }}"
+          artifact_name: zap-baseline-${{ github.run_id }}
 

@@ -180,10 +180,18 @@ jobs:
             kube-linter lint rendered.yaml || true
             kube-linter lint rendered.yaml --format sarif > kube-linter.sarif || true
           else
-            echo "No helm/ dir; skipping"
+            echo "No helm/ dir; skipping" 
+          fi
+      - name: Flag SARIF existence
+        id: klsarif
+        run: |
+          if [ -f kube-linter.sarif ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
           fi
       - name: Upload SARIF (kube-linter)
-        if: hashFiles('kube-linter.sarif') != ''
+        if: steps.klsarif.outputs.found == 'true'
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: kube-linter.sarif
@@ -374,7 +382,7 @@ jobs:
             const critical = vulns.filter(v=>v.Severity==='CRITICAL').length;
             const high = vulns.filter(v=>v.Severity==='HIGH').length;
             const body = [
-              "### Ì¥ê Security Summary",
+              "### Security Summary",
               `- Image: **${process.env.IMAGE_REPO}:${process.env.VERSION}**`,
               `- Critical: **${critical}**`,
               `- High: **${high}**`,

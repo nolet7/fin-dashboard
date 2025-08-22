@@ -1,0 +1,434 @@
+name: CI/CD - Build, Scan, Push, Bump Helm (Argo sync)
+
+on:
+  push:
+    branches: ["feature/dev"]
+  pull_request:
+    branches: ["feature/dev"]
+
+permissions:
+  contents: write            # commit tag bump
+  security-events: write     # upload SARIF to Code scanning
+  actions: read
+  id-token: write            # OIDC for Cosign keyless
+  packages: read
+
+concurrency:
+  group: cicd-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE_REPO: docker.io/noletengine/financehub
+  VERSION: v1.0.${{ github.run_number }}
+  CHECKOV_SOFT_FAIL: "false"         # set "true" to make Checkov advisory
+  TRIVY_BLOCK: "false"               # set "true" to block on CRITICAL/HIGH
+  SEMGREP_FAIL: "false"              # SAST advisory by default
+  CODEQL_LANG: "python"              # adjust to your stack
+  DAST_URL: "http://45-77-97-228.nip.io:30080/"
+  DAST_FAIL: "false"                 # set "true" to fail pipeline on ZAP alerts
+  INGRESS_HOST: ${{ vars.INGRESS_HOST }} # optional repo var
+
+jobs:
+  gitleaks:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+      - name: Upload SARIF (gitleaks)
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: results.sarif
+      - name: Archive gitleaks SARIF
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-results
+          path: results.sarif
+          retention-days: 14
+
+  pytest:
+    name: Unit tests (pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install test deps (if any)
+        if: ${{ hashFiles('**/requirements*.txt') != '' }}
+        run: |
+          python -m pip install -U pip
+          pip install -r requirements.txt || true
+      - name: Run pytest (only if tests exist)
+        if: ${{ hashFiles('**/tests/**.py','**/test_*.py','**/*_test.py') != '' }}
+        run: pytest -q
+
+  checkov:
+    name: Dockerfile scan (Checkov)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Checkov on Dockerfiles
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: .
+          framework: dockerfile
+          output_format: sarif
+          output_file_path: checkov.sarif
+          soft_fail: ${{ env.CHECKOV_SOFT_FAIL }}
+      - name: Upload SARIF (checkov)
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: checkov.sarif
+      - name: Archive Checkov SARIF
+        uses: actions/upload-artifact@v4
+        with:
+          name: checkov-results
+          path: checkov.sarif
+          retention-days: 14
+
+  sonarcloud:
+    name: Code analysis (SonarCloud)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@v2
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: https://sonarcloud.io
+
+  codeql:
+    name: SAST (CodeQL)
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ env.CODEQL_LANG }}
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+      - name: Analyze
+        uses: github/codeql-action/analyze@v3
+
+  semgrep:
+    name: SAST (Semgrep)
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Semgrep
+        uses: returntocorp/semgrep-action@v1
+        with:
+          generateSarif: "1"
+      - name: Upload SARIF (Semgrep)
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: semgrep.sarif
+      - name: Soft/Hard gate
+        if: always()
+        run: |
+          if [ "${{ env.SEMGREP_FAIL }}" = "true" ]; then
+            echo "Failing on Semgrep because SEMGREP_FAIL=true"
+            exit 1
+          fi
+
+  hadolint:
+    name: Dockerfile Lint (Hadolint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install hadolint
+        run: |
+          curl -sSL -o /usr/local/bin/hadolint \
+            https://github.com/hadolint/hadolint/releases/latest/download/hadolint-Linux-x86_64
+          chmod +x /usr/local/bin/hadolint
+      - name: Lint Dockerfile and produce SARIF
+        run: hadolint Dockerfile --format sarif > hadolint.sarif || true
+      - name: Upload SARIF (Hadolint)
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: hadolint.sarif
+
+  kube-linter:
+    name: K8s/Helm Lint (kube-linter)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.14.4
+      - name: Install kube-linter
+        run: |
+          curl -sSL https://github.com/stackrox/kube-linter/releases/latest/download/kube-linter-linux.tar.gz \
+            | tar -xz kube-linter
+          sudo mv kube-linter /usr/local/bin/
+      - name: Template Helm (if present) and lint
+        run: |
+          if [ -d helm ]; then
+            helm template tmp-chart helm > rendered.yaml
+            kube-linter lint rendered.yaml || true
+            kube-linter lint rendered.yaml --format sarif > kube-linter.sarif || true
+          else
+            echo "No helm/ dir; skipping"
+          fi
+      - name: Upload SARIF (kube-linter)
+        if: hashFiles('kube-linter.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: kube-linter.sarif
+
+  conftest:
+    name: Policy-as-Code (OPA Conftest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.14.4
+      - name: Install conftest
+        run: |
+          curl -L https://github.com/open-policy-agent/conftest/releases/latest/download/conftest_Linux_x86_64.tar.gz \
+            | tar -xz conftest
+          sudo mv conftest /usr/local/bin/
+      - name: Render Helm (if present)
+        run: |
+          if [ -d helm ]; then
+            helm template tmp-chart helm > rendered.yaml
+          fi
+      - name: Evaluate Rego policies (if ./policy exists)
+        run: |
+          if [ -d policy ]; then
+            if [ -f rendered.yaml ]; then
+              conftest test rendered.yaml -p policy || true
+            elif [ -d k8s ]; then
+              conftest test k8s -p policy || true
+            else
+              echo "No rendered.yaml or k8s/; skipping"
+            fi
+          else
+            echo "No policy/ dir; skipping"
+          fi
+
+  trivy-fs:
+    name: Repo & IaC scan (Trivy filesystem)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Trivy filesystem scan (SARIF)
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          scan-type: 'fs'
+          format: 'sarif'
+          output: 'trivy-fs.sarif'
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+          exit-code: ${{ env.TRIVY_BLOCK == 'true' && '1' || '0' }}
+      - name: Upload SARIF (trivy-fs)
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-fs.sarif
+      - name: Archive Trivy FS SARIF
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-fs-results
+          path: trivy-fs.sarif
+          retention-days: 14
+
+  build-push-bump:
+    name: Build, SBOM, scan, sign & bump Helm
+    runs-on: ubuntu-latest
+    needs: [gitleaks, pytest, checkov, sonarcloud, codeql, semgrep, hadolint, kube-linter, conftest, trivy-fs]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Docker Hub login
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build & push image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.IMAGE_REPO }}:${{ env.VERSION }}
+
+      # ---------- SBOM (Syft) ----------
+      - name: Generate SBOM (Syft)
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.IMAGE_REPO }}:${{ env.VERSION }}
+          format: spdx-json
+          output-file: sbom.spdx.json
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ env.VERSION }}
+          path: sbom.spdx.json
+          retention-days: 30
+
+      # ---------- Trivy image scans ----------
+      - name: Trivy image scan (table preview)
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          image-ref: ${{ env.IMAGE_REPO }}:${{ env.VERSION }}
+          format: 'table'
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+          exit-code: '0'
+
+      - name: Trivy image scan (JSON report)
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          image-ref: ${{ env.IMAGE_REPO }}:${{ env.VERSION }}
+          format: 'json'
+          output: 'trivy-image.json'
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+          exit-code: '0'
+
+      - name: Trivy image scan (SARIF upload)
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          image-ref: ${{ env.IMAGE_REPO }}:${{ env.VERSION }}
+          format: 'sarif'
+          output: 'trivy-image.sarif'
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+          exit-code: '0'
+      - name: Upload SARIF (trivy-image)
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-image.sarif
+
+      - name: Upload Trivy artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-image-reports
+          path: |
+            trivy-image.json
+            trivy-image.sarif
+          retention-days: 14
+
+      # ---------- Cosign keyless sign + provenance ----------
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3.8.1
+
+      - name: Cosign sign (keyless OIDC)
+        env:
+          COSIGN_EXPERIMENTAL: "true"
+        run: |
+          cosign sign \
+            ${{ env.IMAGE_REPO }}:${{ env.VERSION }} \
+            --yes
+
+      - name: Cosign attest SLSA provenance
+        env:
+          COSIGN_EXPERIMENTAL: "true"
+        run: |
+          cosign attest --type slsaprovenance \
+            --predicate <(printf '{"builder":"github-actions","repo":"%s","run_id":"%s"}' \
+              "${{ github.repository }}" "${{ github.run_id }}") \
+            --yes \
+            ${{ env.IMAGE_REPO }}:${{ env.VERSION }}
+
+      # ---------- Nice summary ----------
+      - name: Trivy summary (PASS/FAIL but non-blocking)
+        if: always()
+        run: |
+          critical=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' trivy-image.json 2>/dev/null || echo 0)
+          high=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH")] | length' trivy-image.json 2>/dev/null || echo 0)
+          gate="PASS"
+          if [ "${{ env.TRIVY_BLOCK }}" = "true" ] && { [ "$critical" -gt 0 ] || [ "$high" -gt 0 ]; }; then
+            gate="FAIL (blocking enabled)"
+          fi
+          {
+            echo "## Security Summary"
+            echo ""
+            echo "- Image: **${{ env.IMAGE_REPO }}:${{ env.VERSION }}**"
+            echo "- Critical: **$critical**"
+            echo "- High: **$high**"
+            echo "- Cosign: **signed & attested (SLSA)**"
+            echo "- SBOM: **sbom.spdx.json** (artifact)"
+            echo ""
+            echo "> Full findings are available in **Security â†’ Code scanning alerts** and as workflow artifacts."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Comment on PR with summary
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let data = {};
+            try { data = JSON.parse(fs.readFileSync('trivy-image.json','utf8')); } catch(e) {}
+            const vulns = (data.Results||[]).flatMap(r => (r.Vulnerabilities||[]));
+            const critical = vulns.filter(v=>v.Severity==='CRITICAL').length;
+            const high = vulns.filter(v=>v.Severity==='HIGH').length;
+            const body = [
+              `### í´ Security Summary`,
+              `- Image: **${process.env.IMAGE_REPO}:${process.env.VERSION}**`,
+              `- Critical: **${critical}**`,
+              `- High: **${high}**`,
+              `- Cosign: **signed & attested**`,
+              `- SBOM artifact: \`sbom.spdx.json\``,
+              ``,
+              `> See Security â†’ Code scanning alerts for full details.`
+            ].join('\n');
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body
+            });
+
+      # ---------- Helm bump ----------
+      - name: Ensure ingress host in values.yaml (optional)
+        if: ${{ env.INGRESS_HOST != '' }}
+        run: |
+          sed -i "s#^\(\s*-\s*host:\s*\).*#\1${INGRESS_HOST}#" helm/values.yaml
+
+      - name: Bump Helm image tag
+        run: |
+          sed -i 's#^\(\s*repository:\s*\).*#\1noletengine/financehub#' helm/values.yaml
+          sed -i 's#^\(\s*tag:\s*\).*#\1'${{ env.VERSION }}'#' helm/values.yaml
+          git config user.name  "github-actions"
+          git config user.email "github@actions"
+          git add helm/values.yaml
+          git commit -m "ci: image ${{ env.VERSION }}; ingress host ${INGRESS_HOST}" || echo "no changes"
+          git push
+
+  zap:
+    name: DAST (OWASP ZAP Baseline)
+    runs-on: ubuntu-latest
+    needs: [build-push-bump]
+    steps:
+      - name: ZAP Baseline Scan
+        uses: zaproxy/action-baseline@v0.12.0
+        with:
+          target: ${{ env.DAST_URL }}
+          cmd_options: "-a"               # active scan; remove for faster baseline
+          fail_action: ${{ env.DAST_FAIL }}
+          artifact_name: "zap-baseline-${{ github.run_id }}"
+
